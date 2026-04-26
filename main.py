@@ -196,3 +196,69 @@ def json_dumps(obj: t.Any) -> str:
     return orjson.dumps(obj, option=orjson.OPT_SORT_KEYS).decode("utf-8")
 
 
+def json_loads(s: str) -> t.Any:
+    return orjson.loads(s.encode("utf-8"))
+
+
+def normalize_text(s: str) -> str:
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = "\n".join(line.rstrip() for line in s.split("\n"))
+    return s.strip()
+
+
+def bytes32_from_hex(h: str) -> bytes:
+    if not isinstance(h, str):
+        raise ValueError("hex string expected")
+    if h.startswith("0x"):
+        h = h[2:]
+    b = bytes.fromhex(h)
+    if len(b) != 32:
+        raise ValueError("expected 32 bytes")
+    return b
+
+
+def bytes32_hex_or_keccak(x: str) -> str:
+    x = x.strip()
+    if x.startswith("0x") and len(x) == 66:
+        bytes32_from_hex(x)
+        return x
+    return Web3.keccak(text=x).hex()
+
+
+def validate_bytes32_hex(h: str) -> str:
+    if not isinstance(h, str) or not h.startswith("0x") or len(h) != 66:
+        raise ValueError("bytes32 must be 0x + 64 hex chars")
+    bytes32_from_hex(h)
+    return h
+
+
+def mk_client_origin_list() -> list[str]:
+    env = os.getenv("FACTO_CORS_ORIGINS", "")
+    if not env.strip():
+        return ["*"]
+    return [x.strip() for x in env.split(",") if x.strip()]
+
+
+# ------------------------------ config ------------------------------
+
+
+@dataclasses.dataclass(frozen=True)
+class Settings:
+    host: str
+    port: int
+    db_path: str
+    enable_indexer: bool
+    chain_rpc: str
+    chain_id: int
+    contract_address: str
+    private_key: str | None
+    indexer_poll_s: float
+    indexer_from_block: int
+    max_page_size: int
+    ui_title: str
+    ui_brand: str
+
+    @staticmethod
+    def load() -> "Settings":
+        load_dotenv()
+        host = os.getenv("FACTO_HOST", "127.0.0.1").strip()
