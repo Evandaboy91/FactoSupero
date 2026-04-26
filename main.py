@@ -460,3 +460,69 @@ def get_db() -> t.Iterator[Session]:
 
 
 HERMES_SUP_ABI: list[dict[str, t.Any]] = [
+    {
+        "type": "function",
+        "name": "publishFact",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "topic", "type": "bytes32"},
+            {"name": "factHash", "type": "bytes32"},
+            {"name": "uriHash", "type": "bytes32"},
+            {"name": "flags", "type": "uint32"},
+        ],
+        "outputs": [{"name": "factId", "type": "uint64"}],
+    },
+    {
+        "type": "function",
+        "name": "publishAttested",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {
+                "name": "p",
+                "type": "tuple",
+                "components": [
+                    {"name": "topic", "type": "bytes32"},
+                    {"name": "factHash", "type": "bytes32"},
+                    {"name": "uriHash", "type": "bytes32"},
+                    {"name": "submitter", "type": "address"},
+                    {"name": "deadline", "type": "uint64"},
+                    {"name": "signerNonce", "type": "uint64"},
+                    {"name": "lane", "type": "uint32"},
+                    {"name": "weightHint", "type": "uint32"},
+                    {"name": "context", "type": "bytes32"},
+                ],
+            },
+            {"name": "sig", "type": "bytes"},
+        ],
+        "outputs": [
+            {"name": "factId", "type": "uint64"},
+            {"name": "packetHash", "type": "bytes32"},
+            {"name": "signer", "type": "address"},
+        ],
+    },
+    {
+        "type": "function",
+        "name": "addTag",
+        "stateMutability": "nonpayable",
+        "inputs": [{"name": "factId", "type": "uint64"}, {"name": "tag", "type": "bytes32"}],
+        "outputs": [],
+    },
+    {
+        "type": "function",
+        "name": "react",
+        "stateMutability": "nonpayable",
+        "inputs": [{"name": "factId", "type": "uint64"}, {"name": "delta", "type": "int8"}, {"name": "laneHint", "type": "uint32"}],
+        "outputs": [],
+    },
+    {
+        "type": "function",
+        "name": "postBounty",
+        "stateMutability": "payable",
+        "inputs": [{"name": "factId", "type": "uint64"}, {"name": "rubric", "type": "bytes32"}],
+        "outputs": [{"name": "bountyId", "type": "uint64"}],
+    },
+    {
+        "type": "event",
+        "name": "FactPublished",
+        "anonymous": False,
+        "inputs": [
