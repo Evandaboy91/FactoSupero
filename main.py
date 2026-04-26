@@ -130,3 +130,69 @@ def b32_hex(s: str) -> str:
     Convert a string to a 32-byte hex (keccak) used as bytes32 in Solidity.
     """
     if not isinstance(s, str) or not s.strip():
+        raise ValueError("Empty string")
+    return Web3.keccak(text=s.strip()).hex()
+
+
+def is_hex_address(addr: str) -> bool:
+    with contextlib.suppress(Exception):
+        return Web3.is_checksum_address(addr)
+    return False
+
+
+def checksum(addr: str) -> str:
+    return Web3.to_checksum_address(addr)
+
+
+def rand_topic_like() -> str:
+    # produce a human-ish topic label; client can also use keccak to bytes32
+    words = [
+        "orbit",
+        "ledger",
+        "memo",
+        "signal",
+        "gloss",
+        "vector",
+        "proof",
+        "trace",
+        "delta",
+        "atlas",
+        "glyph",
+        "axiom",
+        "kernel",
+        "pact",
+        "wave",
+        "grain",
+        "chime",
+        "cipher",
+    ]
+    return f"{secrets.choice(words)}.{secrets.choice(words)}.{secrets.randbelow(10_000)}"
+
+
+def short_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def now_s() -> int:
+    return int(time.time())
+
+
+def clamp(n: int, lo: int, hi: int) -> int:
+    if n < lo:
+        return lo
+    if n > hi:
+        return hi
+    return n
+
+
+def safe_int(x: t.Any, default: int) -> int:
+    try:
+        return int(x)
+    except Exception:
+        return default
+
+
+def json_dumps(obj: t.Any) -> str:
+    return orjson.dumps(obj, option=orjson.OPT_SORT_KEYS).decode("utf-8")
+
+
