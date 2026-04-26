@@ -394,3 +394,69 @@ class BountyRow(Base):
     __tablename__ = "bounties"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    fact_id: Mapped[int] = mapped_column(ForeignKey("facts.id", ondelete="CASCADE"), index=True)
+    sponsor: Mapped[str] = mapped_column(String(64), index=True)
+    rubric_b32: Mapped[str] = mapped_column(String(66), index=True)
+    amount_wei: Mapped[int] = mapped_column(Integer)
+    chain_bounty_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    chain_tx: Mapped[str] = mapped_column(String(90), default="", index=True)
+    chain_block: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    state: Mapped[str] = mapped_column(String(24), default="open")
+
+    fact: Mapped[FactRow] = relationship(back_populates="bounties")
+
+    __table_args__ = (Index("ix_bounty_fact", "fact_id"),)
+
+
+class ChainCursorRow(Base):
+    __tablename__ = "chain_cursor"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    chain_id: Mapped[int] = mapped_column(Integer, index=True)
+    contract: Mapped[str] = mapped_column(String(64), index=True)
+    last_block: Mapped[int] = mapped_column(Integer, default=0)
+    meta: Mapped[str] = mapped_column(Text, default="{}")
+
+    __table_args__ = (UniqueConstraint("chain_id", "contract", name="uq_cursor"),)
+
+
+def make_engine(db_path: str) -> Engine:
+    url = f"sqlite+pysqlite:///{db_path}"
+    eng = create_engine(url, future=True, echo=False, connect_args={"check_same_thread": False})
+    return eng
+
+
+ENGINE = make_engine(SETTINGS.db_path)
+SessionLocal = sessionmaker(bind=ENGINE, autoflush=False, autocommit=False, expire_on_commit=False, future=True)
+
+
+def init_db() -> None:
+    Base.metadata.create_all(ENGINE)
+    with SessionLocal() as s:
+        cur = s.execute(select(ChainCursorRow).where(ChainCursorRow.chain_id == SETTINGS.chain_id, ChainCursorRow.contract == SETTINGS.contract_address)).scalar_one_or_none()
+        if cur is None:
+            s.add(
+                ChainCursorRow(
+                    chain_id=SETTINGS.chain_id,
+                    contract=SETTINGS.contract_address,
+                    last_block=max(0, SETTINGS.indexer_from_block),
+                    meta=json_dumps({"created": to_iso(utcnow()), "poll_s": SETTINGS.indexer_poll_s}),
+                )
+            )
+            s.commit()
+
+
+def get_db() -> t.Iterator[Session]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ------------------------------ web3 / contract ------------------------------
+
+
+HERMES_SUP_ABI: list[dict[str, t.Any]] = [
