@@ -328,3 +328,69 @@ class FactRow(Base):
     tag_count: Mapped[int] = mapped_column(Integer, default=0)
 
     tags: Mapped[list["TagRow"]] = relationship(back_populates="fact", cascade="all,delete-orphan")
+    reactions: Mapped[list["ReactionRow"]] = relationship(back_populates="fact", cascade="all,delete-orphan")
+    attestations: Mapped[list["AttestationRow"]] = relationship(back_populates="fact", cascade="all,delete-orphan")
+    bounties: Mapped[list["BountyRow"]] = relationship(back_populates="fact", cascade="all,delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("topic_b32", "fact_b32", "uri_b32", "submitter", name="uq_fact_core"),
+        CheckConstraint("length(topic_b32)=66", name="ck_topic_len"),
+        CheckConstraint("length(fact_b32)=66", name="ck_fact_len"),
+        CheckConstraint("length(uri_b32)=66", name="ck_uri_len"),
+    )
+
+
+class TagRow(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    fact_id: Mapped[int] = mapped_column(ForeignKey("facts.id", ondelete="CASCADE"), index=True)
+    tag_b32: Mapped[str] = mapped_column(String(66), index=True)
+    tag_label: Mapped[str] = mapped_column(String(200), index=True)
+    who: Mapped[str] = mapped_column(String(64), index=True)
+
+    fact: Mapped[FactRow] = relationship(back_populates="tags")
+
+    __table_args__ = (UniqueConstraint("fact_id", "tag_b32", name="uq_fact_tag"),)
+
+
+class ReactionRow(Base):
+    __tablename__ = "reactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    fact_id: Mapped[int] = mapped_column(ForeignKey("facts.id", ondelete="CASCADE"), index=True)
+    who: Mapped[str] = mapped_column(String(64), index=True)
+    delta: Mapped[int] = mapped_column(Integer)
+    lane_hint: Mapped[int] = mapped_column(Integer, default=0)
+
+    fact: Mapped[FactRow] = relationship(back_populates="reactions")
+
+    __table_args__ = (UniqueConstraint("fact_id", "who", name="uq_fact_reaction"), CheckConstraint("delta IN (-1,1)", name="ck_delta"))
+
+
+class AttestationRow(Base):
+    __tablename__ = "attestations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    fact_id: Mapped[int] = mapped_column(ForeignKey("facts.id", ondelete="CASCADE"), index=True)
+    lane_id: Mapped[int] = mapped_column(Integer, index=True)
+    signer: Mapped[str] = mapped_column(String(64), index=True)
+    relay: Mapped[str] = mapped_column(String(64), index=True)
+    packet_hash: Mapped[str] = mapped_column(String(66), index=True)
+    weight: Mapped[int] = mapped_column(Integer, default=0)
+    signer_nonce: Mapped[int] = mapped_column(Integer, default=0)
+    chain_tx: Mapped[str] = mapped_column(String(90), default="", index=True)
+    chain_block: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
+    fact: Mapped[FactRow] = relationship(back_populates="attestations")
+
+    __table_args__ = (Index("ix_att_fact_lane", "fact_id", "lane_id"),)
+
+
+class BountyRow(Base):
+    __tablename__ = "bounties"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
