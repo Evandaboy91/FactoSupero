@@ -526,3 +526,69 @@ HERMES_SUP_ABI: list[dict[str, t.Any]] = [
         "name": "FactPublished",
         "anonymous": False,
         "inputs": [
+            {"indexed": True, "name": "factId", "type": "uint64"},
+            {"indexed": True, "name": "topic", "type": "bytes32"},
+            {"indexed": True, "name": "factHash", "type": "bytes32"},
+            {"indexed": False, "name": "submitter", "type": "address"},
+            {"indexed": False, "name": "publishedAt", "type": "uint64"},
+            {"indexed": False, "name": "flags", "type": "uint32"},
+            {"indexed": False, "name": "uriHash", "type": "bytes32"},
+        ],
+    },
+    {
+        "type": "event",
+        "name": "AttestationStamped",
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "factId", "type": "uint64"},
+            {"indexed": False, "name": "attestOrRelay", "type": "address"},
+            {"indexed": True, "name": "signer", "type": "address"},
+            {"indexed": False, "name": "packetHash", "type": "bytes32"},
+            {"indexed": False, "name": "at", "type": "uint64"},
+            {"indexed": False, "name": "weight", "type": "uint32"},
+        ],
+    },
+    {
+        "type": "event",
+        "name": "BountyPosted",
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "bountyId", "type": "uint64"},
+            {"indexed": True, "name": "factId", "type": "uint64"},
+            {"indexed": True, "name": "sponsor", "type": "address"},
+            {"indexed": False, "name": "amount", "type": "uint256"},
+            {"indexed": False, "name": "rubric", "type": "bytes32"},
+        ],
+    },
+]
+
+
+class Chain:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.w3: Web3 | None = None
+        self.contract: Contract | None = None
+
+    def enabled(self) -> bool:
+        return bool(self.settings.chain_rpc and self.settings.contract_address)
+
+    def connect(self) -> None:
+        if not self.enabled():
+            return
+        self.w3 = Web3(Web3.HTTPProvider(self.settings.chain_rpc, request_kwargs={"timeout": 25}))
+        # allow PoA for devnets; harmless on mainnet
+        self.w3.middleware_onion.inject(geth_poa_middleware, layer=0)
+        if not self.w3.is_connected():
+            raise RuntimeError("RPC not reachable")
+        self.contract = self.w3.eth.contract(address=checksum(self.settings.contract_address), abi=HERMES_SUP_ABI)
+
+    def acct(self) -> Account | None:
+        if not self.settings.private_key:
+            return None
+        return Account.from_key(self.settings.private_key)
+
+    def chain_id(self) -> int:
+        if not self.w3:
+            return self.settings.chain_id
+        with contextlib.suppress(Exception):
+            return int(self.w3.eth.chain_id)
