@@ -64,3 +64,69 @@ from fastapi.responses import HTMLResponse, ORJSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 from rich.console import Console
 from rich.logging import RichHandler
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    func,
+    select,
+    text as sql_text,
+)
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
+from web3 import Web3
+from web3.contract import Contract
+from web3.middleware import geth_poa_middleware
+
+# ------------------------------ logging ------------------------------
+
+console = Console()
+LOG = logging.getLogger("FactoSupero")
+
+
+def _setup_logging() -> None:
+    level = os.getenv("FACTO_LOG_LEVEL", "INFO").upper().strip()
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True, markup=False)],
+    )
+
+
+# ------------------------------ helpers ------------------------------
+
+
+def utcnow() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def to_iso(ts: dt.datetime) -> str:
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=dt.timezone.utc)
+    return ts.astimezone(dt.timezone.utc).isoformat()
+
+
+def sha256_hex(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
+def keccak_hex(b: bytes) -> str:
+    return Web3.keccak(b).hex()
+
+
+def b32_hex(s: str) -> str:
+    """
+    Convert a string to a 32-byte hex (keccak) used as bytes32 in Solidity.
+    """
+    if not isinstance(s, str) or not s.strip():
