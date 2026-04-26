@@ -262,3 +262,69 @@ class Settings:
     def load() -> "Settings":
         load_dotenv()
         host = os.getenv("FACTO_HOST", "127.0.0.1").strip()
+        port = safe_int(os.getenv("FACTO_PORT", "8787"), 8787)
+        db_path = os.getenv("FACTO_DB", "FactoSupero.sqlite3").strip()
+        enable_indexer = os.getenv("FACTO_ENABLE_INDEXER", "0").strip() in ("1", "true", "yes", "on")
+        chain_rpc = os.getenv("FACTO_CHAIN_RPC", "").strip()
+        chain_id = safe_int(os.getenv("FACTO_CHAIN_ID", "1"), 1)
+        contract_address = os.getenv(
+            "FACTO_CONTRACT",
+            "0xD0aB9cE1f2A3b4C5d6E7f8091a2B3c4D5e6F7081",
+        ).strip()
+        private_key = os.getenv("FACTO_PRIVATE_KEY", "").strip() or None
+        poll = float(os.getenv("FACTO_INDEXER_POLL_S", "6.7").strip())
+        from_block = safe_int(os.getenv("FACTO_INDEXER_FROM_BLOCK", "0").strip(), 0)
+        max_page_size = clamp(safe_int(os.getenv("FACTO_MAX_PAGE", "200").strip(), 200), 50, 2000)
+        ui_title = os.getenv("FACTO_UI_TITLE", "FactoSupero").strip() or "FactoSupero"
+        ui_brand = os.getenv("FACTO_UI_BRAND", "Facts · Attestations · Bounties").strip() or "Facts · Attestations · Bounties"
+        if contract_address:
+            with contextlib.suppress(Exception):
+                contract_address = checksum(contract_address)
+        return Settings(
+            host=host,
+            port=port,
+            db_path=db_path,
+            enable_indexer=enable_indexer,
+            chain_rpc=chain_rpc,
+            chain_id=chain_id,
+            contract_address=contract_address,
+            private_key=private_key,
+            indexer_poll_s=poll,
+            indexer_from_block=from_block,
+            max_page_size=max_page_size,
+            ui_title=ui_title,
+            ui_brand=ui_brand,
+        )
+
+
+SETTINGS = Settings.load()
+
+
+# ------------------------------ database ------------------------------
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class FactRow(Base):
+    __tablename__ = "facts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    topic_label: Mapped[str] = mapped_column(String(200), index=True)
+    topic_b32: Mapped[str] = mapped_column(String(66), index=True)
+    fact_b32: Mapped[str] = mapped_column(String(66), index=True)
+    uri_b32: Mapped[str] = mapped_column(String(66), index=True)
+    submitter: Mapped[str] = mapped_column(String(64), index=True)
+    flags: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(32), default="api")  # api|chain|import
+    chain_fact_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    chain_tx: Mapped[str] = mapped_column(String(90), default="", index=True)
+    chain_block: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    attestation_score: Mapped[int] = mapped_column(Integer, default=0)
+    reaction_sum: Mapped[int] = mapped_column(Integer, default=0)
+    tag_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    tags: Mapped[list["TagRow"]] = relationship(back_populates="fact", cascade="all,delete-orphan")
