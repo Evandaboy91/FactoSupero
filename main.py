@@ -1054,3 +1054,69 @@ def list_facts(
     topic = topic.strip()
     submitter = submitter.strip()
     if submitter and Web3.is_address(submitter):
+        submitter = checksum(submitter)
+
+    stmt = select(FactRow)
+    if topic:
+        _, topic_b32 = _topic_to_b32(topic)
+        stmt = stmt.where(FactRow.topic_b32 == topic_b32)
+    if submitter:
+        stmt = stmt.where(FactRow.submitter == submitter)
+    if source:
+        stmt = stmt.where(FactRow.source == source)
+    if q:
+        # simple search across note/topic
+        like = f"%{q}%"
+        stmt = stmt.where((FactRow.topic_label.like(like)) | (FactRow.note.like(like)))
+    if newest_first:
+        stmt = stmt.order_by(FactRow.id.desc())
+    else:
+        stmt = stmt.order_by(FactRow.id.asc())
+    stmt = stmt.offset(page * page_size).limit(page_size)
+
+    rows = db.execute(stmt).scalars().all()
+    return [_as_fact_out(r) for r in rows]
+
+
+@app.get("/facts/{fact_id}", response_model=FactOut)
+def get_fact(fact_id: int, db: Session = Depends(get_db)) -> FactOut:
+    row = db.get(FactRow, fact_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="fact not found")
+    return _as_fact_out(row)
+
+
+@app.post("/facts/{fact_id}/tags")
+async def add_tag(fact_id: int, inp: TagIn, db: Session = Depends(get_db)) -> dict[str, t.Any]:
+    row = db.get(FactRow, fact_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="fact not found")
+    tag_label, tag_b32 = _topic_to_b32(inp.tag)
+    who = _address_or_anon(inp.who)
+    tag = TagRow(fact_id=row.id, tag_b32=tag_b32, tag_label=tag_label, who=who)
+    db.add(tag)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="tag already exists")
+    row.tag_count += 1
+    db.add(row)
+    db.commit()
+    payload = {"fact_id": fact_id, "tag": tag_label, "tag_b32": tag_b32, "who": who}
+    await _push_ws("fact.tagged", payload)
+    return {"ok": True, **payload}
+
+
+@app.post("/facts/{fact_id}/reactions")
+async def set_reaction(fact_id: int, inp: ReactionIn, db: Session = Depends(get_db)) -> dict[str, t.Any]:
+    row = db.get(FactRow, fact_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="fact not found")
+    who = _address_or_anon(inp.who)
+
+    existing = db.execute(select(ReactionRow).where(ReactionRow.fact_id == fact_id, ReactionRow.who == who)).scalar_one_or_none()
+    if existing is None:
+        r = ReactionRow(fact_id=fact_id, who=who, delta=int(inp.delta), lane_hint=int(inp.lane_hint))
+        db.add(r)
+        row.reaction_sum += int(inp.delta)
