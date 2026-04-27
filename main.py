@@ -592,3 +592,69 @@ class Chain:
             return self.settings.chain_id
         with contextlib.suppress(Exception):
             return int(self.w3.eth.chain_id)
+        return self.settings.chain_id
+
+    def gas_params(self) -> dict[str, int]:
+        if not self.w3:
+            return {}
+        base = {}
+        with contextlib.suppress(Exception):
+            gp = int(self.w3.eth.gas_price)
+            base["gasPrice"] = gp
+        return base
+
+    def send_tx(self, fn, *, value_wei: int = 0) -> dict[str, t.Any]:
+        if not self.w3 or not self.contract:
+            raise RuntimeError("Chain not connected")
+        acct = self.acct()
+        if acct is None:
+            raise RuntimeError("No private key configured")
+        nonce = self.w3.eth.get_transaction_count(acct.address)
+        tx = fn.build_transaction(
+            {
+                "from": acct.address,
+                "nonce": nonce,
+                "value": int(value_wei),
+                **self.gas_params(),
+            }
+        )
+        # estimate with a buffer
+        with contextlib.suppress(Exception):
+            est = int(self.w3.eth.estimate_gas(tx))
+            tx["gas"] = int(est * 1.25) + 25_000
+        signed = acct.sign_transaction(tx)
+        txh = self.w3.eth.send_raw_transaction(signed.rawTransaction)
+        rec = self.w3.eth.wait_for_transaction_receipt(txh, timeout=180)
+        return {"txHash": txh.hex(), "status": int(rec.status), "blockNumber": int(rec.blockNumber)}
+
+
+CHAIN = Chain(SETTINGS)
+with contextlib.suppress(Exception):
+    CHAIN.connect()
+
+
+# ------------------------------ schemas ------------------------------
+
+
+class FactCreateIn(BaseModel):
+    topic: str = Field(..., description="topic label or bytes32 hex")
+    fact_text: str = Field(..., min_length=3, max_length=20_000)
+    uri: str = Field("", description="optional URI for richer content (ipfs://, https://, etc)")
+    submitter: str = Field("", description="checksum address (optional; UI can set)")
+    flags: int = Field(0, ge=0, le=2**32 - 1)
+    note: str = Field("", max_length=2_000)
+
+    @field_validator("topic")
+    @classmethod
+    def _topic_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("topic required")
+        if len(v) > 200:
+            raise ValueError("topic too long")
+        return v
+
+    @field_validator("uri")
+    @classmethod
+    def _uri_ok(cls, v: str) -> str:
+        v = v.strip()
