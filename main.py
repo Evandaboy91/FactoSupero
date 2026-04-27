@@ -922,3 +922,69 @@ def root() -> str:
 
 
 # ------------------------------ services ------------------------------
+
+
+def _fact_hash_from_text(text: str) -> str:
+    text = normalize_text(text)
+    return Web3.keccak(text=text).hex()
+
+
+def _uri_hash(uri: str) -> str:
+    uri = uri.strip()
+    if not uri:
+        # still produce non-zero bytes32 for on-chain requirement
+        return Web3.keccak(text=f"urn:factosupero:empty:{secrets.token_hex(16)}").hex()
+    return Web3.keccak(text=uri).hex()
+
+
+def _topic_to_b32(topic: str) -> tuple[str, str]:
+    topic = topic.strip()
+    if topic.startswith("0x") and len(topic) == 66:
+        _ = validate_bytes32_hex(topic)
+        return (topic, topic)
+    # preserve label and produce bytes32
+    return (topic, Web3.keccak(text=topic).hex())
+
+
+def _address_or_anon(addr: str) -> str:
+    addr = addr.strip()
+    if addr and Web3.is_address(addr):
+        return checksum(addr)
+    # anonymous but stable-ish per row
+    rnd = "0x" + secrets.token_hex(20)
+    return checksum(rnd)
+
+
+def _as_fact_out(r: FactRow) -> FactOut:
+    return FactOut(
+        id=int(r.id),
+        created_at=to_iso(r.created_at),
+        topic_label=r.topic_label,
+        topic_b32=r.topic_b32,
+        fact_b32=r.fact_b32,
+        uri_b32=r.uri_b32,
+        submitter=r.submitter,
+        flags=int(r.flags),
+        note=r.note,
+        source=r.source,
+        chain_fact_id=r.chain_fact_id,
+        chain_tx=r.chain_tx,
+        chain_block=r.chain_block,
+        attestation_score=int(r.attestation_score),
+        reaction_sum=int(r.reaction_sum),
+        tag_count=int(r.tag_count),
+    )
+
+
+async def _push_ws(event: str, payload: dict[str, t.Any]) -> None:
+    await HUB.publish({"event": event, "payload": payload, "at": now_s()})
+
+
+def _require_chain() -> None:
+    if not CHAIN.enabled() or not CHAIN.w3 or not CHAIN.contract:
+        raise HTTPException(status_code=503, detail="Chain not configured")
+
+
+def _require_key() -> None:
+    if not SETTINGS.private_key:
+        raise HTTPException(status_code=503, detail="FACTO_PRIVATE_KEY not configured")
