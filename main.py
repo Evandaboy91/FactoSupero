@@ -658,3 +658,69 @@ class FactCreateIn(BaseModel):
     @classmethod
     def _uri_ok(cls, v: str) -> str:
         v = v.strip()
+        if len(v) > 2_000:
+            raise ValueError("uri too long")
+        return v
+
+    @field_validator("submitter")
+    @classmethod
+    def _submitter_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return v
+        if not Web3.is_address(v):
+            raise ValueError("invalid address")
+        return checksum(v)
+
+
+class FactOut(BaseModel):
+    id: int
+    created_at: str
+    topic_label: str
+    topic_b32: str
+    fact_b32: str
+    uri_b32: str
+    submitter: str
+    flags: int
+    note: str
+    source: str
+    chain_fact_id: int | None
+    chain_tx: str
+    chain_block: int | None
+    attestation_score: int
+    reaction_sum: int
+    tag_count: int
+
+
+class TagIn(BaseModel):
+    tag: str = Field(..., description="tag label or bytes32 hex")
+    who: str = Field("", description="optional checksum address")
+
+    @field_validator("tag")
+    @classmethod
+    def _tag_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("tag required")
+        if len(v) > 200:
+            raise ValueError("tag too long")
+        return v
+
+    @field_validator("who")
+    @classmethod
+    def _who_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return v
+        if not Web3.is_address(v):
+            raise ValueError("invalid address")
+        return checksum(v)
+
+
+class ReactionIn(BaseModel):
+    delta: int = Field(..., description="-1 or +1")
+    lane_hint: int = Field(0, ge=0, le=2**32 - 1)
+    who: str = Field("", description="optional checksum address")
+
+    @field_validator("delta")
+    @classmethod
