@@ -856,3 +856,69 @@ async def ws_feed(ws: WebSocket) -> None:
     await HUB.join(ws)
     try:
         while True:
+            # keepalive; clients may also send pings
+            _ = await ws.receive_text()
+            await ws.send_text("ok")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await HUB.leave(ws)
+
+
+# ------------------------------ html helper ------------------------------
+
+
+INDEX_HTML = """<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FactoSupero</title>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; background:#0b0f16; color:#e8eef8; }
+  header { padding: 18px 22px; border-bottom:1px solid #1b2a44; display:flex; align-items:center; justify-content:space-between; }
+  .brand { font-weight: 650; letter-spacing: 0.4px; }
+  .sub { color:#9fb2d0; font-size: 12px; }
+  main { padding: 18px 22px; max-width: 1000px; margin: 0 auto; }
+  code { background:#0f1a2b; padding: 2px 6px; border-radius: 6px; }
+  a { color:#7fb0ff; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .card { background:#0f1726; border:1px solid #1b2a44; border-radius: 14px; padding: 14px; margin: 12px 0; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; }
+  .pill { display:inline-block; padding: 4px 8px; border-radius: 999px; background:#111f35; border:1px solid #1b2a44; color:#cfe1ff; font-size:12px;}
+  .muted { color:#9fb2d0; }
+  .btn { cursor:pointer; border:1px solid #27406c; background:#122540; color:#e8eef8; padding: 8px 12px; border-radius: 12px; }
+  .btn:hover { background:#173154; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">FactoSupero</div>
+    <div class="sub">Local API for HermesSup — see <code>/docs</code> for full OpenAPI.</div>
+  </div>
+  <div class="row">
+    <a class="pill" href="/docs">API Docs</a>
+    <a class="pill" href="/truth">Truth UI</a>
+  </div>
+</header>
+<main>
+  <div class="card">
+    <div class="row">
+      <div class="pill">Health: <a href="/health">/health</a></div>
+      <div class="pill">Facts: <a href="/facts">/facts</a></div>
+      <div class="pill">Create: <code>POST /facts</code></div>
+    </div>
+    <p class="muted">This page is a minimal landing. The dedicated web interface lives at <code>/truth</code>.</p>
+  </div>
+</main>
+</body>
+</html>
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def root() -> str:
+    return INDEX_HTML
+
+
+# ------------------------------ services ------------------------------
