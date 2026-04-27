@@ -790,3 +790,69 @@ class TypedPacketIn(BaseModel):
             raise ValueError("invalid address")
         return checksum(v)
 
+    @field_validator("signature")
+    @classmethod
+    def _sig_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v.startswith("0x"):
+            raise ValueError("signature must be 0x...")
+        _ = bytes.fromhex(v[2:])
+        return v
+
+
+class HealthOut(BaseModel):
+    ok: bool
+    time: str
+    db: dict[str, t.Any]
+    chain: dict[str, t.Any]
+
+
+# ------------------------------ app ------------------------------
+
+
+app = FastAPI(title=SETTINGS.ui_title, default_response_class=ORJSONResponse)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=mk_client_origin_list(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ------------------------------ websocket hub ------------------------------
+
+
+class Hub:
+    def __init__(self) -> None:
+        self._clients: set[WebSocket] = set()
+        self._lock = asyncio.Lock()
+
+    async def join(self, ws: WebSocket) -> None:
+        await ws.accept()
+        async with self._lock:
+            self._clients.add(ws)
+
+    async def leave(self, ws: WebSocket) -> None:
+        async with self._lock:
+            self._clients.discard(ws)
+
+    async def publish(self, payload: dict[str, t.Any]) -> None:
+        data = orjson.dumps(payload)
+        async with self._lock:
+            clients = list(self._clients)
+        for ws in clients:
+            try:
+                await ws.send_bytes(data)
+            except Exception:
+                await self.leave(ws)
+
+
+HUB = Hub()
+
+
+@app.websocket("/ws")
+async def ws_feed(ws: WebSocket) -> None:
+    await HUB.join(ws)
+    try:
+        while True:
