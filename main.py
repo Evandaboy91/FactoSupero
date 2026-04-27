@@ -988,3 +988,69 @@ def _require_chain() -> None:
 def _require_key() -> None:
     if not SETTINGS.private_key:
         raise HTTPException(status_code=503, detail="FACTO_PRIVATE_KEY not configured")
+
+
+# ------------------------------ API: facts ------------------------------
+
+
+@app.post("/facts", response_model=FactOut)
+async def create_fact(inp: FactCreateIn, db: Session = Depends(get_db)) -> FactOut:
+    topic_label, topic_b32 = _topic_to_b32(inp.topic)
+    fact_b32 = _fact_hash_from_text(inp.fact_text)
+    uri_b32 = _uri_hash(inp.uri)
+    submitter = _address_or_anon(inp.submitter)
+
+    row = FactRow(
+        topic_label=topic_label,
+        topic_b32=topic_b32,
+        fact_b32=fact_b32,
+        uri_b32=uri_b32,
+        submitter=submitter,
+        flags=int(inp.flags),
+        note=normalize_text(inp.note) if inp.note else "",
+        source="api",
+        chain_fact_id=None,
+        chain_tx="",
+        chain_block=None,
+        attestation_score=0,
+        reaction_sum=0,
+        tag_count=0,
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # return existing row
+        existing = db.execute(
+            select(FactRow).where(
+                FactRow.topic_b32 == topic_b32,
+                FactRow.fact_b32 == fact_b32,
+                FactRow.uri_b32 == uri_b32,
+                FactRow.submitter == submitter,
+            )
+        ).scalar_one()
+        return _as_fact_out(existing)
+
+    db.refresh(row)
+    out = _as_fact_out(row)
+    await _push_ws("fact.created", out.model_dump())
+    return out
+
+
+@app.get("/facts", response_model=list[FactOut])
+def list_facts(
+    q: str = "",
+    topic: str = "",
+    submitter: str = "",
+    source: str = "",
+    page: int = 0,
+    page_size: int = 50,
+    newest_first: bool = True,
+    db: Session = Depends(get_db),
+) -> list[FactOut]:
+    page_size = clamp(page_size, 1, SETTINGS.max_page_size)
+    q = q.strip()
+    topic = topic.strip()
+    submitter = submitter.strip()
+    if submitter and Web3.is_address(submitter):
