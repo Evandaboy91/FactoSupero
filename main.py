@@ -724,3 +724,69 @@ class ReactionIn(BaseModel):
 
     @field_validator("delta")
     @classmethod
+    def _delta_ok(cls, v: int) -> int:
+        if v not in (-1, 1):
+            raise ValueError("delta must be -1 or 1")
+        return v
+
+    @field_validator("who")
+    @classmethod
+    def _who_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return v
+        if not Web3.is_address(v):
+            raise ValueError("invalid address")
+        return checksum(v)
+
+
+class BountyPostIn(BaseModel):
+    amount_wei: int = Field(..., ge=1)
+    rubric: str = Field(..., description="rubric label or bytes32 hex")
+    sponsor: str = Field("", description="optional checksum address")
+
+    @field_validator("rubric")
+    @classmethod
+    def _rubric_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("rubric required")
+        if len(v) > 240:
+            raise ValueError("rubric too long")
+        return v
+
+    @field_validator("sponsor")
+    @classmethod
+    def _sponsor_ok(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            return v
+        if not Web3.is_address(v):
+            raise ValueError("invalid address")
+        return checksum(v)
+
+
+class TypedPacketIn(BaseModel):
+    topic_b32: str
+    fact_b32: str
+    uri_b32: str
+    submitter: str
+    deadline: int = 0
+    signer_nonce: int = 0
+    lane: int = 1
+    weight_hint: int = 0
+    context_b32: str = "0x" + "00" * 32
+    signature: str
+
+    @field_validator("topic_b32", "fact_b32", "uri_b32", "context_b32")
+    @classmethod
+    def _b32_ok(cls, v: str) -> str:
+        return validate_bytes32_hex(v)
+
+    @field_validator("submitter")
+    @classmethod
+    def _addr_ok(cls, v: str) -> str:
+        if not Web3.is_address(v):
+            raise ValueError("invalid address")
+        return checksum(v)
+
